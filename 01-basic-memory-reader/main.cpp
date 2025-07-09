@@ -49,17 +49,73 @@ DWORD findProcessID(const wchar_t* targetProcessName)
     return 0;
 }
 
+// get the base address of the game
+HMODULE GetModuleBaseAddress(HANDLE processHandle, const wchar_t *moduleName)
+{
+    HMODULE modules[1024];
+    DWORD bytesNeeded;
+
+    if (!EnumProcessModules(processHandle, modules, sizeof(modules), &bytesNeeded)) { return NULL; };
+
+    for (unsigned int i = 0; i < (bytesNeeded / sizeof(HMODULE)); ++i) {
+        wchar_t szModName[MAX_PATH];
+
+        if (!GetModuleFileNameExW(processHandle, modules[i], szModName, sizeof(szModName))) { return NULL; }
+
+        std::wstring modName(szModName);
+
+        if (modName.find(L"memory-game.exe") != std::wstring::npos) 
+        {
+            std::wcout << L"Found target module: " << modName << "\n\n";
+            return modules[i];
+        }
+    }
+
+    return NULL;
+}
+
+struct MemoryReadEntry {
+    LPCVOID address;     // remote address in target
+    void* buffer;        // pointer to local buffer
+    SIZE_T size;         // size of data type
+};
+
 int main() {
     DWORD pid = findProcessID(L"memory-game.exe");
-
     if (pid == 0) { std::cout << "Process not found!"; return 1; }
+    std::cout << "Found process ID: " << pid << "\n\n";
 
-    std::cout << "Found process ID: " << pid;
-    
+    HandleWrapper processHandle(OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid));
+    if (processHandle == NULL) { std::cout << "Failed to open process!\n\n"; return 1; }
 
-    // TODO: OpenProcess with PROCESS_VM_READ 
-    // TODO: ReadProcessMemory from address 0x7FF6DE4D8D78
-    // TODO: Print the Health value
+    auto baseAddress = GetModuleBaseAddress(processHandle, L"memory-game.exe");
+
+    int healthValue, goldValue, levelValue;
+    double xpValue;
+
+    LPVOID healthAddress = (LPVOID)((uintptr_t)baseAddress + 0xEB078);
+    LPVOID goldAddress = (LPVOID)((uintptr_t)baseAddress + 0xEB07C);    // +4
+    LPVOID levelAddress = (LPVOID)((uintptr_t)baseAddress + 0xEB080);   // +8  
+    LPVOID xpAddress = (LPVOID)((uintptr_t)baseAddress + 0xEB088);      // +16 (double)
+
+    SIZE_T NumberOfBytesRead;
+
+    MemoryReadEntry entries[] = {
+        { healthAddress, &healthValue, sizeof(healthValue) },
+        { goldAddress,   &goldValue,   sizeof(goldValue)   },
+        { levelAddress,  &levelValue,  sizeof(levelValue)  },
+        { xpAddress,     &xpValue,     sizeof(xpValue)     }
+    };
+
+    for (const auto& entry : entries) {
+        BOOL success = ReadProcessMemory(processHandle, entry.address, entry.buffer, entry.size, &NumberOfBytesRead);
+        if (!success) { std::cerr << "Failed to read memory at address " << entry.address; }
+    }
+
+    std::cout << "Health: " << healthValue << "\n";
+    std::cout << "Gold: "   << goldValue << "\n";
+    std::cout << "Level: "  << levelValue << "\n";
+    std::cout << "XP: "     << xpValue << "\n";
     
     return 0;
 }
