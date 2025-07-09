@@ -2,8 +2,7 @@
 *.exe
 
 # soon
-02-memory-pattern-scanner/*
-03-real-time-monitor/*
-04-memory-writer/*
+03-memory-pattern-scanner/*
+04-real-time-monitor/*
 05-gui-editor/*
 CMakeLists.txt
